@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { Card, Section } from "../types";
 import { 
   Plus, Edit2, Trash2, ArrowUp, ArrowDown, Sparkles, Check, X, 
-  Film, AlertCircle, RefreshCw, MessageSquare, Send, Bot, User, ArrowRight
+  Film, AlertCircle, RefreshCw, MessageSquare, Send, Bot, User, ArrowRight,
+  Link, FileText, RotateCcw, Settings
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -180,6 +181,9 @@ interface CardListProps {
   onReorderCards: (cardId: string, direction: "up" | "down") => void;
   onOptimizeCardWithAI: (cardId: string, goal: string) => Promise<void>;
   isAILoading: { [key: string]: boolean };
+  customTemplate: string;
+  customDocLink: string;
+  onSaveCustomReference: (template: string, docLink: string) => void;
 }
 
 export default function CardList({
@@ -190,6 +194,9 @@ export default function CardList({
   onReorderCards,
   onOptimizeCardWithAI,
   isAILoading,
+  customTemplate,
+  customDocLink,
+  onSaveCustomReference,
 }: CardListProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -201,9 +208,49 @@ export default function CardList({
   const [editTitle, setEditTitle] = useState("");
   const [editVideo, setEditVideo] = useState("");
 
+  // Custom non-blocking confirmation dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    actionText: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   // Presets & customized goals
   const [explainGoalId, setExplainGoalId] = useState<string | null>(null);
   const [customGoal, setCustomGoal] = useState("");
+
+  // Customize reference template manager states
+  const [showRefModal, setShowRefModal] = useState(false);
+  const [refActiveCardId, setRefActiveCardId] = useState<string | null>(null);
+  const [tempTemplate, setTempTemplate] = useState("");
+  const [tempDocLink, setTempDocLink] = useState("");
+  const [refSavedAlert, setRefSavedAlert] = useState(false);
+
+  const openReferenceModal = (cardId: string | null) => {
+    setRefActiveCardId(cardId);
+    setTempTemplate(customTemplate || MEDIA_DUYLAM_STANDARD_TEMPLATE);
+    setTempDocLink(customDocLink || "");
+    setRefSavedAlert(false);
+    setShowRefModal(true);
+  };
+
+  const handleSaveReferenceConfig = () => {
+    onSaveCustomReference(tempTemplate, tempDocLink);
+    setRefSavedAlert(true);
+    setTimeout(() => {
+      setRefSavedAlert(false);
+    }, 3000);
+  };
+
+  const handleApplyReferenceToCard = () => {
+    if (!refActiveCardId) return;
+    onUpdateCard(refActiveCardId, { videoContent: tempTemplate });
+    if (editingCardId === refActiveCardId) {
+      setEditVideo(tempTemplate);
+    }
+    setShowRefModal(false);
+  };
 
   // Chat interface per card states
   const [activeChatCardId, setActiveChatCardId] = useState<string | null>(null);
@@ -274,7 +321,9 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
         body: JSON.stringify({
           messages: updatedMsgs.map(m => ({ role: m.role, content: m.content })),
           cardTitle,
-          cardScript: currentScript
+          cardScript: currentScript,
+          customTemplate,
+          customDocLink
         })
       });
       const data = await response.json();
@@ -355,7 +404,12 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
       const response = await fetch("/api/generate-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newTitle.trim(), details: "" }),
+        body: JSON.stringify({ 
+          title: newTitle.trim(), 
+          details: "",
+          customTemplate,
+          customDocLink
+        }),
       });
       const data = await response.json();
       if (data.success) {
@@ -478,9 +532,15 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
                     <button
                       type="button"
                       onClick={() => {
-                        if (window.confirm("Học thuật: Thao tác này sẽ ghi đè và lắp sẵn cấu trúc kịch bản mẫu 4 Phần của Duy Lâm vào bài học mới này. Bạn đồng ý?")) {
-                          setNewVideo(MEDIA_DUYLAM_STANDARD_TEMPLATE);
-                        }
+                        setConfirmDialog({
+                          title: "Gắn Khung Kịch Bản",
+                          message: "Học thuật: Thao tác này sẽ ghi đè và lắp sẵn cấu trúc kịch bản mẫu 4 Phần của Duy Lâm vào bài học mới này. Bạn đồng ý?",
+                          actionText: "Xác nhận",
+                          onConfirm: () => {
+                            setNewVideo(MEDIA_DUYLAM_STANDARD_TEMPLATE);
+                            setConfirmDialog(null);
+                          }
+                        });
                       }}
                       className="text-[9px] text-black hover:bg-black/10 bg-black/5 px-2 py-0.5 rounded inline-flex items-center gap-1 border border-black/20 font-bold uppercase tracking-wider cursor-pointer font-mono shadow-3xs"
                     >
@@ -593,19 +653,23 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
 
                         {/* Gắn khung kịch bản mẫu Duy Lâm */}
                         <button
-                          onClick={() => {
-                            if (window.confirm(`Bạn muốn ghi đè nội dung bài học "${card.title}" bằng khung kịch bản mẫu Duy Lâm chuẩn 4 phần? Thao tác này giúp dẫn hướng hoàn hảo cho Gemini!`)) {
-                              onUpdateCard(card.id, { videoContent: MEDIA_DUYLAM_STANDARD_TEMPLATE });
-                              if (editingCardId === card.id) {
-                                setEditVideo(MEDIA_DUYLAM_STANDARD_TEMPLATE);
-                              }
-                            }
-                          }}
-                          className="p-1 px-2 bg-zinc-50 hover:bg-zinc-100 text-zinc-900 border border-zinc-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-3xs"
-                          title="Gắn khung sườn kịch bản Duy Lâm chuẩn 4 Phần"
+                          onClick={() => openReferenceModal(card.id)}
+                          className={`p-1 px-2 border rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-3xs ${
+                            customTemplate || customDocLink 
+                              ? "bg-emerald-50 text-emerald-900 border-emerald-250 hover:bg-emerald-100" 
+                              : "bg-zinc-50 hover:bg-zinc-100 text-zinc-900 border-zinc-200"
+                          }`}
+                          title={
+                            customTemplate || customDocLink 
+                              ? "Cấu hình tham chiếu mẫu đang KÍCH HOẠT (Bấm để sửa)" 
+                              : "Bấm để thiết lập Khung kịch bản mẫu hoặc làm tham chiếu cho Gemini"
+                          }
                         >
-                          <Film size={11} className="text-zinc-600" />
+                          <Film size={11} className={customTemplate || customDocLink ? "text-emerald-700" : "text-zinc-600"} />
                           <span>Gắn khung mẫu</span>
+                          {(customTemplate || customDocLink) && (
+                            <span className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-pulse inline-block" />
+                          )}
                         </button>
 
                         {/* Presets manager */}
@@ -647,9 +711,15 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
 
                         <button
                           onClick={() => {
-                            if (confirm(`Bạn chắc chắn muốn hủy bài học "${card.title}"?`)) {
-                              onDeleteCard(card.id);
-                            }
+                            setConfirmDialog({
+                              title: "Hủy bài học",
+                              message: `Bạn chắc chắn muốn hủy bài học "${card.title}"?`,
+                              actionText: "Xác nhận xóa",
+                              onConfirm: () => {
+                                onDeleteCard(card.id);
+                                setConfirmDialog(null);
+                              }
+                            });
                           }}
                           className="p-1.5 text-rose-500 hover:text-rose-700 rounded hover:bg-rose-50 cursor-pointer"
                           title="Xóa bài học"
@@ -725,9 +795,15 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
                           <button
                             type="button"
                             onClick={() => {
-                              if (window.confirm("Học thuật: Hành động này sẽ ghi đè và gắn kịch bản mẫu chuẩn 4 Phần của Duy Lâm vào ô nhập liệu. Bạn có chắc chắn?")) {
-                                setEditVideo(MEDIA_DUYLAM_STANDARD_TEMPLATE);
-                              }
+                              setConfirmDialog({
+                                title: "Gắn Khung Kịch Bản Mẫu",
+                                message: "Học thuật: Hành động này sẽ ghi đè và gắn kịch bản mẫu chuẩn 4 Phần của Duy Lâm vào ô nhập liệu. Bạn có chắc chắn?",
+                                actionText: "Gắn khung mẫu",
+                                onConfirm: () => {
+                                  setEditVideo(MEDIA_DUYLAM_STANDARD_TEMPLATE);
+                                  setConfirmDialog(null);
+                                }
+                              });
                             }}
                             className="text-[9px] text-black hover:bg-black/10 bg-black/5 px-2 py-0.5 rounded inline-flex items-center gap-1 border border-black/20 font-bold uppercase tracking-wider cursor-pointer font-mono"
                           >
@@ -877,6 +953,209 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
           })
         )}
       </div>
+
+      {/* Custom Modal Confirmation Portal */}
+      <AnimatePresence>
+        {confirmDialog && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-100">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              {/* Header */}
+              <div className="bg-black text-white px-5 py-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Film size={15} className="text-zinc-200 animate-pulse" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider font-mono text-zinc-200">
+                    Xác nhận học thuật
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="p-1 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-zinc-50 text-black rounded-xl border border-zinc-200 shrink-0 mt-0.5">
+                    <AlertCircle size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900 font-display">
+                      {confirmDialog.title}
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed mt-1 font-sans">
+                      {confirmDialog.message}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="bg-slate-50 border-t border-slate-100 px-5 py-3.5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="px-4 py-2 border border-slate-200 hover:border-slate-300 text-slate-500 hover:text-slate-800 bg-white text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDialog.onConfirm}
+                  className="px-4.5 py-2 bg-black hover:bg-zinc-800 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs"
+                >
+                  {confirmDialog.actionText}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Reference Template & Doc Link Modal */}
+      <AnimatePresence>
+        {showRefModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-zinc-950 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl"
+            >
+              {/* Header */}
+              <div className="bg-black text-white px-5 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Film size={16} className="text-amber-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider font-display">
+                    Cấu hình Khung kịch bản mẫu & Tài liệu tham chiếu
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRefModal(false)}
+                  className="p-1.5 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto bg-slate-50/50">
+                <div className="bg-zinc-50 border border-zinc-200 p-3.5 rounded-xl text-xs space-y-1 text-zinc-700">
+                  <p className="font-bold text-zinc-900 flex items-center gap-1">
+                    <Sparkles size={13} className="text-indigo-600 shrink-0" />
+                    Định hình phong cách học thuật thông minh
+                  </p>
+                  <p className="leading-relaxed">
+                    Nội dung và liên kết tài liệu (.doc, .docx, file hướng dẫn) bạn nhập ở đây sẽ là **mỏ neo duy nhất** được nạp trực tiếp vào bộ não của Gemini. Mọi phản hồi, biên kịch kịch bản mới, hay chỉnh sửa nhịp độ (Pacing) sẽ bám chặt theo định dạng này của bạn.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 block">
+                    1. Nội dung khung kịch bản mẫu (Template Format)
+                  </label>
+                  <textarea
+                    value={tempTemplate}
+                    onChange={(e) => setTempTemplate(e.target.value)}
+                    rows={12}
+                    className="w-full text-xs font-mono p-3 bg-zinc-950 text-emerald-400 border border-zinc-800 rounded-xl focus:ring-1 focus:ring-emerald-500 focus:outline-none leading-relaxed resize-y shadow-inner"
+                    placeholder="Nhập hoặc dán định dạng kịch bản mẫu tại đây..."
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setTempTemplate(MEDIA_DUYLAM_STANDARD_TEMPLATE)}
+                      className="px-2.5 py-1 text-[10px] border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-md font-semibold transition-all cursor-pointer"
+                    >
+                      Dùng mẫu mặc định của Duy Lâm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTempTemplate("")}
+                      className="px-2.5 py-1 text-[10px] border border-slate-200 hover:bg-slate-50 text-red-600 rounded-md font-semibold transition-all cursor-pointer"
+                    >
+                      Xóa trống khung
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 block flex items-center gap-1">
+                    2. Đường dẫn liên kết tài liệu (.doc, .docx học hỏi format)
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+                      <Link size={13} />
+                    </div>
+                    <input
+                      type="text"
+                      value={tempDocLink}
+                      onChange={(e) => setTempDocLink(e.target.value)}
+                      placeholder="Dán link file tài liệu Google Docs, OneDrive, Dropbox..."
+                      className="w-full text-xs pl-8.5 pr-3 py-2.5 border border-slate-200 rounded-xl focus:border-black focus:outline-none bg-white placeholder-slate-400 font-mono"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-normal">
+                    * Gemini sẽ học quy cách kể chuyện, nhịp điệu pacing, và các thuật ngữ định vị trong tài liệu này để tự động biên kịch.
+                  </p>
+                </div>
+
+                {refSavedAlert && (
+                  <div className="bg-emerald-50 border border-emerald-250 text-emerald-800 p-2.5 rounded-lg text-xs font-medium flex items-center gap-2 animate-pulse mt-1">
+                    <Check size={14} className="text-emerald-600" />
+                    <span>Đã lưu thành công cấu hình tham chiếu cho Gemini! Đã lưu trữ lưu động.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="bg-slate-50 border-t border-slate-100 px-5 py-4 flex flex-col sm:flex-row gap-3 sm:justify-between items-center">
+                {/* Secondary action: Apply to card directly if context was a card */}
+                {refActiveCardId ? (
+                  <button
+                    type="button"
+                    onClick={handleApplyReferenceToCard}
+                    className="w-full sm:w-auto px-4 py-2.5 border border-slate-200 hover:border-black hover:bg-slate-100 text-slate-700 hover:text-black text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 justify-center cursor-pointer shadow-3xs"
+                    title="Ghi đè trực tiếp kịch bản mẫu này dòng vào bài đang xem"
+                  >
+                    <RefreshCw size={13} />
+                    Gắn đè vào bài học này
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowRefModal(false)}
+                    className="flex-1 sm:flex-none px-4 py-2.5 border border-slate-200 text-slate-500 hover:text-slate-800 bg-white text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveReferenceConfig}
+                    className="flex-1 sm:flex-none px-5 py-2.5 bg-black hover:bg-zinc-800 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-md flex items-center gap-1 justify-center"
+                  >
+                    <Check size={14} />
+                    Lưu cấu hình tham chiếu
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

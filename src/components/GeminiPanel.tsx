@@ -6,9 +6,16 @@ import { motion, AnimatePresence } from "motion/react";
 interface GeminiPanelProps {
   currentSections: Section[];
   onImportAISections: (sections: Section[]) => void;
+  customTemplate: string;
+  customDocLink: string;
 }
 
-export default function GeminiPanel({ currentSections, onImportAISections }: GeminiPanelProps) {
+export default function GeminiPanel({ 
+  currentSections, 
+  onImportAISections,
+  customTemplate,
+  customDocLink
+}: GeminiPanelProps) {
   const [topicInput, setTopicInput] = useState("");
   const [isGeneratingStructure, setIsGeneratingStructure] = useState(false);
 
@@ -70,7 +77,9 @@ export default function GeminiPanel({ currentSections, onImportAISections }: Gem
               coreKnowledge: c.coreKnowledge,
               videoContent: c.videoContent
             }))
-          }))
+          })),
+          customTemplate,
+          customDocLink
         })
       });
 
@@ -120,7 +129,11 @@ export default function GeminiPanel({ currentSections, onImportAISections }: Gem
       const response = await fetch("/api/suggest-structure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: activeTopic }),
+        body: JSON.stringify({ 
+          topic: activeTopic,
+          customTemplate,
+          customDocLink
+        }),
       });
       const data = await response.json();
       if (data.success && data.sections) {

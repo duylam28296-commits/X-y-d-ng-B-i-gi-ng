@@ -30,6 +30,14 @@ export default function SectionManager({
   const [editTitle, setEditTitle] = useState("");
   const [editDesc, setEditDesc] = useState("");
 
+  // Custom non-blocking confirmation dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    actionText: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   // Handle Add section trigger
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,9 +233,15 @@ export default function SectionManager({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm(`Bạn chắc muốn xóa "${sec.title}" cùng toàn bộ bài học bên trong?`)) {
-                              onDeleteSection(sec.id);
-                            }
+                            setConfirmDialog({
+                              title: "Xóa chương lớn",
+                              message: `Bạn chắc chắn muốn xóa chương "${sec.title}" cùng toàn bộ bài học bên trong? Thao tác này không thể khôi phục.`,
+                              actionText: "Xác nhận xóa",
+                              onConfirm: () => {
+                                onDeleteSection(sec.id);
+                                setConfirmDialog(null);
+                              }
+                            });
                           }}
                           className="p-1 text-rose-500 hover:text-rose-700 transition-colors"
                           title="Xóa chương"
@@ -266,6 +280,72 @@ export default function SectionManager({
             })}
         </div>
       </div>
+
+      {/* Custom Modal Confirmation Portal */}
+      <AnimatePresence>
+        {confirmDialog && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-100">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              {/* Header */}
+              <div className="bg-black text-white px-5 py-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FolderKanban size={15} className="text-zinc-200 animate-pulse" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider font-mono text-zinc-200">
+                    Xác nhận tác vụ
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="p-1 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-zinc-50 text-black rounded-xl border border-zinc-200 shrink-0 mt-0.5">
+                    <Trash2 size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900 font-display">
+                      {confirmDialog.title}
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed mt-1 font-sans">
+                      {confirmDialog.message}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="bg-slate-50 border-t border-slate-100 px-5 py-3.5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="px-4 py-2 border border-slate-200 hover:border-slate-300 text-slate-500 hover:text-slate-800 bg-white text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDialog.onConfirm}
+                  className="px-4.5 py-2 bg-black hover:bg-zinc-800 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs"
+                >
+                  {confirmDialog.actionText}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

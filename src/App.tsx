@@ -8,6 +8,7 @@ import {
   Sparkles, Film, Play, BookOpen, Layers, Info, Trash2, 
   RotateCcw, AlertTriangle, ExternalLink, Flame, CheckCircle, Lightbulb, X
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 export default function App() {
   const [topic, setTopic] = useState(DEFAULT_TOPIC);
@@ -22,12 +23,35 @@ export default function App() {
   // Connection/API Key state
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
+  // Custom template & document format references for Gemini
+  const [customTemplate, setCustomTemplate] = useState<string>("");
+  const [customDocLink, setCustomDocLink] = useState<string>("");
+
+  const saveCustomReference = (template: string, docLink: string) => {
+    setCustomTemplate(template);
+    setCustomDocLink(docLink);
+    localStorage.setItem("vstory_custom_template", template);
+    localStorage.setItem("vstory_custom_doc_link", docLink);
+  };
+
+  // Custom non-blocking confirmation dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    actionText: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   // 1. Initial State Load
   useEffect(() => {
     const savedTopic = localStorage.getItem("vstory_topic");
     const savedSections = localStorage.getItem("vstory_sections");
+    const savedTemplate = localStorage.getItem("vstory_custom_template");
+    const savedDocLink = localStorage.getItem("vstory_custom_doc_link");
 
     if (savedTopic) setTopic(savedTopic);
+    if (savedTemplate) setCustomTemplate(savedTemplate);
+    if (savedDocLink) setCustomDocLink(savedDocLink);
     
     if (savedSections) {
       try {
@@ -240,6 +264,8 @@ export default function App() {
           coreKnowledge: cardObj.coreKnowledge,
           videoContent: cardObj.videoContent,
           goal: goal,
+          customTemplate,
+          customDocLink
         })
       });
 
@@ -282,9 +308,15 @@ export default function App() {
   };
 
   const handleResetToPresets = () => {
-    if (confirm("Hành động này sẽ khôi phục giáo án về dữ liệu kịch bản chuẩn ban đầu. Bạn có muốn tiếp tục?")) {
-      loadDefaultSyllabus();
-    }
+    setConfirmDialog({
+      title: "Khôi phục mẫu chuẩn",
+      message: "Hành động này sẽ khôi phục giáo án về dữ liệu kịch bản chuẩn ban đầu của Media Duy Lâm. Bạn có muốn tiếp tục?",
+      actionText: "Khôi phục",
+      onConfirm: () => {
+        loadDefaultSyllabus();
+        setConfirmDialog(null);
+      }
+    });
   };
 
   const activeSection = sections.find((s) => s.id === activeSectionId);
@@ -370,6 +402,9 @@ export default function App() {
               onReorderCards={handleReorderCards}
               onOptimizeCardWithAI={handleOptimizeCardWithAI}
               isAILoading={isAILoadingMap}
+              customTemplate={customTemplate}
+              customDocLink={customDocLink}
+              onSaveCustomReference={saveCustomReference}
             />
           ) : (
             <div className="flex-1 py-16 px-4 flex flex-col items-center justify-center text-center max-w-lg mx-auto">
@@ -393,6 +428,8 @@ export default function App() {
           <GeminiPanel
             currentSections={sections}
             onImportAISections={handleImportAISections}
+            customTemplate={customTemplate}
+            customDocLink={customDocLink}
           />
         </div>
       </div>
@@ -455,6 +492,72 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Custom Modal Confirmation Portal */}
+      <AnimatePresence>
+        {confirmDialog && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-100">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              {/* Header */}
+              <div className="bg-black text-white px-5 py-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <RotateCcw size={15} className="text-zinc-200 animate-pulse" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider font-mono text-zinc-200">
+                    Xác nhận tác vụ
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="p-1 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-zinc-50 text-black rounded-xl border border-zinc-200 shrink-0 mt-0.5">
+                    <RotateCcw size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900 font-display">
+                      {confirmDialog.title}
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed mt-1 font-sans">
+                      {confirmDialog.message}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="bg-slate-50 border-t border-slate-100 px-5 py-3.5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="px-4 py-2 border border-slate-200 hover:border-slate-300 text-slate-500 hover:text-slate-800 bg-white text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDialog.onConfirm}
+                  className="px-4.5 py-2 bg-black hover:bg-zinc-800 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs"
+                >
+                  {confirmDialog.actionText}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* 5. Minimal footer */}
       <footer className="bg-white border-t border-slate-200 py-3.5 px-4 text-center">
