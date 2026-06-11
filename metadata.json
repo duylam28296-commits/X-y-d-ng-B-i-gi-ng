@@ -1,0 +1,8 @@
+{
+  "name": "Visual Storytelling Builder",
+  "description": "Ứng dụng xây dựng và quản lý bài giảng chuyên sâu về Visual Storytelling và Video Pacing tích hợp trợ lý Gemini thông minh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
