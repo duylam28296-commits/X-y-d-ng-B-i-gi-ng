@@ -184,6 +184,7 @@ interface CardListProps {
   customTemplate: string;
   customDocLink: string;
   onSaveCustomReference: (template: string, docLink: string) => void;
+  customApiKey?: string;
 }
 
 export default function CardList({
@@ -197,6 +198,7 @@ export default function CardList({
   customTemplate,
   customDocLink,
   onSaveCustomReference,
+  customApiKey,
 }: CardListProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -317,13 +319,17 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
     try {
       const response = await fetch("/api/chat-card-optimize", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(customApiKey ? { "x-gemini-api-key": customApiKey } : {})
+        },
         body: JSON.stringify({
           messages: updatedMsgs.map(m => ({ role: m.role, content: m.content })),
           cardTitle,
           cardScript: currentScript,
           customTemplate,
-          customDocLink
+          customDocLink,
+          customApiKey
         })
       });
       const data = await response.json();
@@ -403,12 +409,16 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
     try {
       const response = await fetch("/api/generate-card", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(customApiKey ? { "x-gemini-api-key": customApiKey } : {})
+        },
         body: JSON.stringify({ 
           title: newTitle.trim(), 
           details: "",
           customTemplate,
-          customDocLink
+          customDocLink,
+          customApiKey
         }),
       });
       const data = await response.json();

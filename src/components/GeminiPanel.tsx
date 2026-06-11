@@ -8,13 +8,15 @@ interface GeminiPanelProps {
   onImportAISections: (sections: Section[]) => void;
   customTemplate: string;
   customDocLink: string;
+  customApiKey?: string;
 }
 
 export default function GeminiPanel({ 
   currentSections, 
   onImportAISections,
   customTemplate,
-  customDocLink
+  customDocLink,
+  customApiKey
 }: GeminiPanelProps) {
   const [topicInput, setTopicInput] = useState("");
   const [isGeneratingStructure, setIsGeneratingStructure] = useState(false);
@@ -65,7 +67,10 @@ export default function GeminiPanel({
     try {
       const response = await fetch("/api/chat-assistant", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(customApiKey ? { "x-gemini-api-key": customApiKey } : {})
+        },
         body: JSON.stringify({
           messages: [...messages, userMsg],
           topic: topicInput,
@@ -79,7 +84,8 @@ export default function GeminiPanel({
             }))
           })),
           customTemplate,
-          customDocLink
+          customDocLink,
+          customApiKey
         })
       });
 
@@ -128,11 +134,15 @@ export default function GeminiPanel({
     try {
       const response = await fetch("/api/suggest-structure", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(customApiKey ? { "x-gemini-api-key": customApiKey } : {})
+        },
         body: JSON.stringify({ 
           topic: activeTopic,
           customTemplate,
-          customDocLink
+          customDocLink,
+          customApiKey
         }),
       });
       const data = await response.json();

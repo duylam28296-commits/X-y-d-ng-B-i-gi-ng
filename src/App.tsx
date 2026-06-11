@@ -21,6 +21,10 @@ export default function App() {
   const [toastExplaintation, setToastExplaintation] = useState<string | null>(null);
 
   // Connection/API Key state
+  const [customApiKey, setCustomApiKey] = useState<string>(() => {
+    return localStorage.getItem("vstory_gemini_api_key") || "";
+  });
+  const [showApiKeyInput, setShowApiKeyInput] = useState<boolean>(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
   // Custom template & document format references for Gemini
@@ -71,9 +75,14 @@ export default function App() {
     } else {
       loadDefaultSyllabus();
     }
+  }, []);
 
-    // Check backend API key configuration
-    fetch("/api/status")
+  // Check backend API key configuration dynamically when key changes
+  useEffect(() => {
+    const savedApiKey = localStorage.getItem("vstory_gemini_api_key") || "";
+    fetch(`/api/status?customApiKey=${encodeURIComponent(savedApiKey)}`, {
+      headers: savedApiKey ? { "x-gemini-api-key": savedApiKey } : {}
+    })
       .then(res => res.json())
       .then(data => {
         if (data && typeof data.hasApiKey === "boolean") {
@@ -83,7 +92,7 @@ export default function App() {
       .catch(err => {
         console.warn("Failed to contact backend status API, using fallback mode", err);
       });
-  }, []);
+  }, [customApiKey]);
 
   const loadDefaultSyllabus = () => {
     setSections(DEFAULT_SECTIONS);
@@ -259,13 +268,17 @@ export default function App() {
     try {
       const response = await fetch("/api/optimize-card", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(customApiKey ? { "x-gemini-api-key": customApiKey } : {})
+        },
         body: JSON.stringify({
           coreKnowledge: cardObj.coreKnowledge,
           videoContent: cardObj.videoContent,
           goal: goal,
           customTemplate,
-          customDocLink
+          customDocLink,
+          customApiKey
         })
       });
 
@@ -319,6 +332,21 @@ export default function App() {
     });
   };
 
+  const handleSaveApiKey = (key: string) => {
+    const trimmed = key.trim();
+    setCustomApiKey(trimmed);
+    localStorage.setItem("vstory_gemini_api_key", trimmed);
+    setShowApiKeyInput(false);
+    showToast("Đã lưu khóa API Gemini cá nhân!", "Hệ thống sẽ ưu tiên sử dụng khóa cá nhân này cho tất cả các yêu cầu xử lý AI.");
+  };
+
+  const handleClearApiKey = () => {
+    setCustomApiKey("");
+    localStorage.removeItem("vstory_gemini_api_key");
+    setShowApiKeyInput(false);
+    showToast("Đã xóa khóa API Gemini cá nhân", "Hệ thống sẽ quay về sử dụng khóa API mặc định trên máy chủ.");
+  };
+
   const activeSection = sections.find((s) => s.id === activeSectionId);
 
   return (
@@ -350,6 +378,18 @@ export default function App() {
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <button
+              onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+              className={`px-2.5 py-1.5 rounded-lg border text-[10px] uppercase font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                customApiKey 
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" 
+                  : "border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+              }`}
+              title="Cấu hình Khóa API Gemini cá nhân của bạn"
+            >
+              <Sparkles size={11} className={customApiKey ? "text-emerald-600 animate-pulse" : ""} />
+              {customApiKey ? "🔑 Đã Nạp API Key" : "⚡ Nạp API key"}
+            </button>
+            <button
               onClick={handleResetToPresets}
               className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors text-[10px] uppercase font-bold flex items-center gap-1 cursor-pointer"
               title="Khôi phục mẫu chuẩn ban đầu"
@@ -365,12 +405,69 @@ export default function App() {
         </div>
       </header>
 
+      {/* Expandable personal API Key setup bar */}
+      <AnimatePresence>
+        {showApiKeyInput && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="bg-zinc-900 border-b border-zinc-800 text-white overflow-hidden"
+          >
+            <div className="max-w-7xl mx-auto px-4 py-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 bg-zinc-800 rounded text-amber-400 font-bold font-mono text-[9px] uppercase tracking-wider">
+                    Gemini Setup
+                  </span>
+                  <h4 className="font-bold text-zinc-100">Cấu hình API Key Gemini Cá Nhân</h4>
+                </div>
+                <p className="text-[10px] text-zinc-400 leading-normal">
+                  Mã API của bạn được lưu an toàn dưới LocalStorage trình duyệt và gửi trực tiếp tới máy chủ proxy để phục vụ tác vụ AI.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <input
+                  type="password"
+                  placeholder="Dán mã API Key của bạn tại đây (AIzaSy...)"
+                  defaultValue={customApiKey}
+                  id="custom-key-input-field"
+                  className="bg-zinc-950 border border-zinc-700 focus:border-zinc-500 text-zinc-100 rounded-lg px-2.5 py-1.5 w-full md:w-[280px] text-xs focus:outline-none font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const inputEl = document.getElementById("custom-key-input-field") as HTMLInputElement;
+                    if (inputEl) {
+                      handleSaveApiKey(inputEl.value);
+                    }
+                  }}
+                  className="px-4 py-1.5 bg-white text-black font-bold rounded-lg cursor-pointer hover:bg-zinc-200 transition-colors shrink-0 text-[11px]"
+                >
+                  Lưu Lại
+                </button>
+                {customApiKey && (
+                  <button
+                    type="button"
+                    onClick={handleClearApiKey}
+                    className="px-3 py-1.5 border border-zinc-705 text-zinc-400 hover:text-white hover:border-zinc-500 rounded-lg cursor-pointer transition-colors shrink-0 text-[11px]"
+                  >
+                    Xóa Khóa
+                  </button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 2. API Warning Notification Banner */}
       {!hasApiKey && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs text-amber-800 flex items-center justify-center gap-2 font-medium">
           <AlertTriangle size={14} className="flex-shrink-0 text-amber-600" />
           <span>
-            Hệ thống đang chạy giả định Pacing: <b>GEMINI_API_KEY chưa cấu hình</b> trong Secrets applet. Hãy mở <b>Settings &gt; Secrets</b> để nạp khóa và trải nghiệm AI sinh bài giảng thực tế!
+            Hệ thống đang chạy giả định: <b>GEMINI_API_KEY chưa cấu hình</b> trong Secrets applet. Hãy mở <b>Settings &gt; Secrets</b> hoặc bấm <b>⚡ Nạp API key</b> phía trên để bổ sung!
           </span>
         </div>
       )}
@@ -405,6 +502,7 @@ export default function App() {
               customTemplate={customTemplate}
               customDocLink={customDocLink}
               onSaveCustomReference={saveCustomReference}
+              customApiKey={customApiKey}
             />
           ) : (
             <div className="flex-1 py-16 px-4 flex flex-col items-center justify-center text-center max-w-lg mx-auto">
@@ -430,6 +528,7 @@ export default function App() {
             onImportAISections={handleImportAISections}
             customTemplate={customTemplate}
             customDocLink={customDocLink}
+            customApiKey={customApiKey}
           />
         </div>
       </div>

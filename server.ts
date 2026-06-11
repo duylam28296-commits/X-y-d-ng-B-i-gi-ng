@@ -8,32 +8,28 @@ dotenv.config();
 
 const PORT = 3000;
 
-// Lazy initialization of Gemini client to prevent crash on startup if key is missing
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not configured in your environment secrets.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
+// Lazy initialization of Gemini client to support dynamic customer API keys
+function getGeminiClient(customApiKey?: string): GoogleGenAI {
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured. Please supply your API key in the configuration bar.");
   }
-  return aiClient;
+  return new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
 }
 
 // Robust retry wrapper to handle 503 Service Unavailable / Spikes in demand gracefully
-async function generateContentWithRetry(params: any, maxRetries = 3, initialDelay = 1000): Promise<any> {
+async function generateContentWithRetry(params: any, customApiKey?: string, maxRetries = 3, initialDelay = 1000): Promise<any> {
   let attempt = 0;
   while (true) {
     try {
-      const ai = getGeminiClient();
+      const ai = getGeminiClient(customApiKey);
       return await ai.models.generateContent(params);
     } catch (error: any) {
       attempt++;
@@ -79,14 +75,16 @@ async function startServer() {
 
   // 1. API: Check Gemini Setup Status
   app.get("/api/status", (req, res) => {
+    const customApiKey = (req.headers["x-gemini-api-key"] as string) || (req.query.customApiKey as string);
     res.json({
-      hasApiKey: !!process.env.GEMINI_API_KEY
+      hasApiKey: !!customApiKey || !!process.env.GEMINI_API_KEY
     });
   });
 
   // 2. API: Auto-suggest whole course structure for a topic in Visual Storytelling & Pacing
   app.post("/api/suggest-structure", async (req, res) => {
-    const { topic, customTemplate, customDocLink } = req.body;
+    const { topic, customTemplate, customDocLink, customApiKey } = req.body;
+    const resolvedApiKey = customApiKey || (req.headers["x-gemini-api-key"] as string);
     if (!topic) {
       return res.status(400).json({ error: "Vui lòng cung cấp chủ đề." });
     }
@@ -126,7 +124,7 @@ Hãy trả về kết quả định dạng JSON rành mạch gồm các chương
             }
           }
         }
-      });
+      }, resolvedApiKey);
 
       const parsedData = JSON.parse(response.text || "[]");
       const mappedData = parsedData.map((item: any) => ({
@@ -240,7 +238,8 @@ Tôi là Giám đốc học thuật tại Media Duy Lâm. Hẹn gặp lại bạ
 
   // 3. API: Generate or Expand specific Card Content
   app.post("/api/generate-card", async (req, res) => {
-    const { title, details, customTemplate, customDocLink } = req.body;
+    const { title, details, customTemplate, customDocLink, customApiKey } = req.body;
+    const resolvedApiKey = customApiKey || (req.headers["x-gemini-api-key"] as string);
     if (!title) {
       return res.status(400).json({ error: "Vui lòng cung cấp tiêu đề bài học." });
     }
@@ -330,7 +329,7 @@ Trả về kết quả định dạng JSON.`;
             required: ["videoContent"]
           }
         }
-      });
+      }, resolvedApiKey);
 
       const parsedData = JSON.parse(response.text || "{}");
       res.json({
@@ -408,7 +407,8 @@ Tôi là Giám đốc học thuật tại Media Duy Lâm. Hẹn gặp lại bạ
 
   // 4. API: Optimize or rewrite card with a specific pacing / storytelling goal
   app.post("/api/optimize-card", async (req, res) => {
-    const { videoContent, goal, customTemplate, customDocLink } = req.body;
+    const { videoContent, goal, customTemplate, customDocLink, customApiKey } = req.body;
+    const resolvedApiKey = customApiKey || (req.headers["x-gemini-api-key"] as string);
     if (!videoContent || !goal) {
       return res.status(400).json({ error: "Thiếu kịch bản bài giảng để tối ưu hóa." });
     }
@@ -447,7 +447,7 @@ ${videoContent}`,
             required: ["videoContent", "explanation"]
           }
         }
-      });
+      }, resolvedApiKey);
 
       const parsedData = JSON.parse(response.text || "{}");
       res.json({
@@ -472,7 +472,8 @@ ${videoContent}`,
 
   // 5. API: Specific Lesson Card Script Optimization Chat Chatbot
   app.post("/api/chat-card-optimize", async (req, res) => {
-    const { messages, cardTitle, cardScript, customTemplate, customDocLink } = req.body;
+    const { messages, cardTitle, cardScript, customTemplate, customDocLink, customApiKey } = req.body;
+    const resolvedApiKey = customApiKey || (req.headers["x-gemini-api-key"] as string);
     if (!cardScript || !cardTitle) {
       return res.status(400).json({ error: "Thiếu dữ liệu của bài học để tối ưu." });
     }
@@ -571,7 +572,7 @@ Hãy hồi đáp bằng Tiếng Việt tinh tế, biểu đạt trực quan và 
         config: {
           systemInstruction: enrichedPrompt
         }
-      });
+      }, resolvedApiKey);
 
       res.json({ success: true, answer: response.text });
     } catch (error: any) {
@@ -586,7 +587,8 @@ Hãy hồi đáp bằng Tiếng Việt tinh tế, biểu đạt trực quan và 
 
   // 6. API: Chat and Q&A Assistant about film pacing / storytelling
   app.post("/api/chat-assistant", async (req, res) => {
-    const { messages, topic, currentSyllabus, customTemplate, customDocLink } = req.body;
+    const { messages, topic, currentSyllabus, customTemplate, customDocLink, customApiKey } = req.body;
+    const resolvedApiKey = customApiKey || (req.headers["x-gemini-api-key"] as string);
     
     try {
       const systemPrompt = `Bạn là "Gemini Pacing Pro" - Trợ lý AI chuyên sâu về Kết cấu câu chuyện bằng hình ảnh (Visual Storytelling) và Nhịp điệu phim (Video Pacing).
@@ -610,7 +612,7 @@ Hãy hồi đáp bằng Tiếng Việt tinh tế, truyền cảm hứng, chuyên
         config: {
           systemInstruction: enrichedPrompt
         }
-      });
+      }, resolvedApiKey);
 
       res.json({ success: true, answer: response.text });
     } catch (error: any) {
