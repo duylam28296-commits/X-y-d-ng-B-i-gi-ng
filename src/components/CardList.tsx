@@ -205,6 +205,9 @@ export default function CardList({
   const [newVideo, setNewVideo] = useState("");
   const [isGeneratingNew, setIsGeneratingNew] = useState(false);
 
+  // States to track which card content should be fully shown or truncated (collapsed)
+  const [expandedCardIds, setExpandedCardIds] = useState<Record<string, boolean>>({});
+
   // Editing state
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -828,8 +831,40 @@ Sau khi phản hồi, tôi sẽ gửi kèm **Bản thảo gợi ý**. Bạn có 
                         />
                       </div>
                     ) : (
-                      <div className="text-xs text-slate-700 leading-relaxed font-sans bg-zinc-50/20 p-5 overflow-hidden rounded-xl border border-zinc-100">
-                        {renderFormattedContent(card.videoContent)}
+                      <div className="relative">
+                        <div 
+                          className={`text-xs text-slate-700 leading-relaxed font-sans bg-zinc-50/20 p-5 overflow-hidden rounded-xl border border-zinc-105 transition-all duration-300 ${
+                            expandedCardIds[card.id] ? "" : "max-h-[180px] pb-12"
+                          }`}
+                        >
+                          {renderFormattedContent(card.videoContent)}
+                          
+                          {!expandedCardIds[card.id] && card.videoContent && card.videoContent.length > 250 && (
+                            <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white via-white/90 to-transparent pointer-events-none rounded-b-xl" />
+                          )}
+                        </div>
+                        
+                        {card.videoContent && card.videoContent.length > 250 && (
+                          <div className="flex justify-center mt-3">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedCardIds(prev => ({ ...prev, [card.id]: !prev[card.id] }))}
+                              className="px-4 py-1.5 bg-zinc-100/95 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 hover:border-zinc-400 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-3xs transition-all hover:scale-105"
+                            >
+                              {expandedCardIds[card.id] ? (
+                                <>
+                                  <ArrowUp size={11} />
+                                  <span>Rút gọn bài học</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ArrowDown size={11} />
+                                  <span>Hiển thị toàn bộ bài học</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

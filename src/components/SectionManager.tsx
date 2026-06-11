@@ -163,8 +163,8 @@ export default function SectionManager({
                   onClick={() => !isEditing && onSelectSection(sec.id)}
                   className={`group relative flex flex-col min-w-[200px] max-w-[280px] flex-1 rounded-xl p-3 border cursor-pointer transition-all ${
                     isActive
-                      ? "bg-zinc-50 border-black text-black shadow-xs border-b-2"
-                      : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                      ? "bg-zinc-200/90 border-zinc-900 text-zinc-950 font-bold border-b-3 shadow-2xs"
+                      : "bg-zinc-100/60 border-zinc-200 hover:bg-zinc-200/50 text-zinc-650"
                   }`}
                 >
                   {/* Inline Edit form / Section details view */}
