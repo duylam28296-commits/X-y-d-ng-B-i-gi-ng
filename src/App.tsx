@@ -3,10 +3,11 @@ import { Section, Card } from "./types";
 import { DEFAULT_SECTIONS, DEFAULT_TOPIC } from "./defaultData";
 import SectionManager from "./components/SectionManager";
 import CardList from "./components/CardList";
-import GeminiPanel from "./components/GeminiPanel";
+import ProductionCalendar from "./components/ProductionCalendar";
 import { 
   Sparkles, Film, Play, BookOpen, Layers, Info, Trash2, 
-  RotateCcw, AlertTriangle, ExternalLink, Flame, CheckCircle, Lightbulb, X
+  RotateCcw, AlertTriangle, ExternalLink, Flame, CheckCircle, Lightbulb, X,
+  Download, Upload
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -15,6 +16,16 @@ export default function App() {
   const [sections, setSections] = useState<Section[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<string>("");
   const [isAILoadingMap, setIsAILoadingMap] = useState<{ [key: string]: boolean }>({});
+  
+  // Production calendar scheduling state (Date YYYY-MM-DD -> Card ID)
+  const [calendarPlan, setCalendarPlan] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem("vstory_calendar_plan");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   
   // App-level notification toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -34,8 +45,7 @@ export default function App() {
   const saveCustomReference = (template: string, docLink: string) => {
     setCustomTemplate(template);
     setCustomDocLink(docLink);
-    localStorage.setItem("vstory_custom_template", template);
-    localStorage.setItem("vstory_custom_doc_link", docLink);
+    saveState(topic, sections, template, docLink, calendarPlan);
   };
 
   // Custom non-blocking confirmation dialog
@@ -46,23 +56,28 @@ export default function App() {
     onConfirm: () => void;
   } | null>(null);
 
-  // 1. Initial State Load
-  useEffect(() => {
+  // Fallback state loader for when database is newly empty or offline
+  const loadFromLocalStorage = () => {
     const savedTopic = localStorage.getItem("vstory_topic");
     const savedSections = localStorage.getItem("vstory_sections");
     const savedTemplate = localStorage.getItem("vstory_custom_template");
     const savedDocLink = localStorage.getItem("vstory_custom_doc_link");
+    const savedPlan = localStorage.getItem("vstory_calendar_plan");
 
     if (savedTopic) setTopic(savedTopic);
     if (savedTemplate) setCustomTemplate(savedTemplate);
     if (savedDocLink) setCustomDocLink(savedDocLink);
+    if (savedPlan) {
+      try {
+        setCalendarPlan(JSON.parse(savedPlan));
+      } catch {}
+    }
     
     if (savedSections) {
       try {
         const parsed = JSON.parse(savedSections);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setSections(parsed);
-          // Set active section
           const sorted = parsed.sort((a, b) => a.order - b.order);
           setActiveSectionId(sorted[0].id);
         } else {
@@ -75,6 +90,45 @@ export default function App() {
     } else {
       loadDefaultSyllabus();
     }
+  };
+
+  // 1. Initial State Load (Server-Side Database Sync with LocalStorage Fallback)
+  useEffect(() => {
+    fetch("/api/load-syllabus")
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success) {
+          if (data.topic) setTopic(data.topic);
+          if (data.customTemplate) setCustomTemplate(data.customTemplate);
+          if (data.customDocLink) setCustomDocLink(data.customDocLink);
+          if (data.calendarPlan) setCalendarPlan(data.calendarPlan);
+          if (Array.isArray(data.sections) && data.sections.length > 0) {
+            setSections(data.sections);
+            const sorted = [...data.sections].sort((a, b) => a.order - b.order);
+            setActiveSectionId(sorted[0].id);
+          } else {
+            loadDefaultSyllabus();
+          }
+          
+          // Seed local state to avoid disparity
+          localStorage.setItem("vstory_topic", data.topic || DEFAULT_TOPIC);
+          if (data.sections) localStorage.setItem("vstory_sections", JSON.stringify(data.sections));
+          if (data.customTemplate) localStorage.setItem("vstory_custom_template", data.customTemplate);
+          if (data.customDocLink) localStorage.setItem("vstory_custom_doc_link", data.customDocLink);
+          if (data.calendarPlan) localStorage.setItem("vstory_calendar_plan", JSON.stringify(data.calendarPlan));
+          
+          showToast(
+            "Đã đồng bộ trực tuyến!",
+            "Toàn bộ khối lượng giáo án soạn thảo và lịch phát sóng kịch bản đã được tải từ móng cơ sở dữ liệu gốc thành công."
+          );
+        } else {
+          loadFromLocalStorage();
+        }
+      })
+      .catch(err => {
+        console.warn("Failed to reach server database, using device fallback key.", err);
+        loadFromLocalStorage();
+      });
   }, []);
 
   // Check backend API key configuration dynamically when key changes
@@ -101,9 +155,53 @@ export default function App() {
     saveState(DEFAULT_TOPIC, DEFAULT_SECTIONS);
   };
 
-  const saveState = (newTopic: string, newSections: Section[]) => {
+  const saveState = (
+    newTopic: string, 
+    newSections: Section[], 
+    newTemplate?: string, 
+    newDocLink?: string, 
+    newPlan?: Record<string, string>
+  ) => {
+    const resolvedTemplate = newTemplate !== undefined ? newTemplate : customTemplate;
+    const resolvedDocLink = newDocLink !== undefined ? newDocLink : customDocLink;
+    const resolvedPlan = newPlan !== undefined ? newPlan : calendarPlan;
+
     localStorage.setItem("vstory_topic", newTopic);
     localStorage.setItem("vstory_sections", JSON.stringify(newSections));
+    localStorage.setItem("vstory_custom_template", resolvedTemplate);
+    localStorage.setItem("vstory_custom_doc_link", resolvedDocLink);
+    localStorage.setItem("vstory_calendar_plan", JSON.stringify(resolvedPlan));
+
+    // Async REST-sync write to server workspace
+    fetch("/api/save-syllabus", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topic: newTopic,
+        sections: newSections,
+        customTemplate: resolvedTemplate,
+        customDocLink: resolvedDocLink,
+        calendarPlan: resolvedPlan,
+      })
+    })
+    .catch(err => {
+      console.warn("Could not save to remote database. Cached under device browser instance.", err);
+    });
+  };
+
+  const handleUpdatePlan = (dateStr: string, cardId: string) => {
+    const updatedPlan = { ...calendarPlan };
+    if (cardId === "") {
+      delete updatedPlan[dateStr];
+    } else {
+      updatedPlan[dateStr] = cardId;
+    }
+    setCalendarPlan(updatedPlan);
+    saveState(topic, sections, customTemplate, customDocLink, updatedPlan);
+    showToast(
+      "Lập lịch sản xuất bài học thành công!",
+      `Mã số bài học định dạng số đã được định vị vào lịch chạy dự án.`
+    );
   };
 
   // 2. Section Crud Operations
@@ -347,6 +445,83 @@ export default function App() {
     showToast("Đã xóa khóa API Gemini cá nhân", "Hệ thống sẽ quay về sử dụng khóa API mặc định trên máy chủ.");
   };
 
+  // Export entire syllabus as standard JSON backup
+  const handleExportBackup = () => {
+    try {
+      const backupData = {
+        version: "2.0",
+        topic,
+        customTemplate,
+        customDocLink,
+        sections,
+        exportedAt: new Date().toISOString()
+      };
+      const jsonString = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      
+      const cleanTopic = topic.trim().replace(/[^a-zA-Z0-9_đĐâÂăĂêÊôÔơƠưƯááààảảããạạííììỉỉĩĩịịúúùùủủũũụụýýỳỳỷỷỹỹỵỵ/]/g, "_");
+      link.download = `MediaDuyLam_KichBan_${cleanTopic || "LessonPlan"}_Backup.json`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      showToast(
+        "Xuất file sao lưu thành công!", 
+        "Tệp .json chứa toàn bộ kịch bản và cấu trúc chương mục đã được tải xuống máy tính của bạn."
+      );
+    } catch (err: any) {
+      console.error(err);
+      showToast("Lỗi xuất file!", "Vui lòng kiểm tra lại cấu trúc dữ liệu kịch bản của bạn.");
+    }
+  };
+
+  // Import entire syllabus from backup JSON
+  const handleImportBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const data = JSON.parse(content);
+        
+        if (data && Array.isArray(data.sections)) {
+          setTopic(data.topic || DEFAULT_TOPIC);
+          setSections(data.sections);
+          if (data.customTemplate) setCustomTemplate(data.customTemplate);
+          if (data.customDocLink) setCustomDocLink(data.customDocLink);
+          
+          if (data.sections.length > 0) {
+            const sorted = [...data.sections].sort((a, b) => a.order - b.order);
+            setActiveSectionId(sorted[0].id);
+          }
+          
+          saveState(data.topic || DEFAULT_TOPIC, data.sections);
+          if (data.customTemplate) localStorage.setItem("vstory_custom_template", data.customTemplate);
+          if (data.customDocLink) localStorage.setItem("vstory_custom_doc_link", data.customDocLink);
+          
+          showToast(
+            "Khôi phục bài giảng nguyên vẹn bản quyền!", 
+            "Chào bạn học viên, toàn bộ cấu trúc bài giảng cũ đã được đồng bộ chuẩn hóa thành công."
+          );
+        } else {
+          showToast("Mã khóa lỗi kịch bản!", "Hãy chắc chắn rằng đây là file sao lưu .json chuẩn của Media Duy Lâm.");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Lỗi giải mã file!", "Cấu trúc dữ liệu có thể đã bị sửa đổi bất thường hoặc sai định dạng.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ""; // clear input
+  };
+
   const activeSection = sections.find((s) => s.id === activeSectionId);
 
   return (
@@ -376,7 +551,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
             <button
               onClick={() => setShowApiKeyInput(!showApiKeyInput)}
               className={`px-2.5 py-1.5 rounded-lg border text-[10px] uppercase font-bold flex items-center gap-1 cursor-pointer transition-colors ${
@@ -389,6 +564,32 @@ export default function App() {
               <Sparkles size={11} className={customApiKey ? "text-emerald-600 animate-pulse" : ""} />
               {customApiKey ? "🔑 Đã Nạp API Key" : "⚡ Nạp API key"}
             </button>
+
+            {/* Export Backup Button */}
+            <button
+              onClick={handleExportBackup}
+              className="px-2.5 py-1.5 rounded-lg border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-slate-50 hover:border-zinc-400 transition-colors text-[10px] uppercase font-bold flex items-center gap-1 cursor-pointer"
+              title="Tải tệp sao lưu bài giảng về máy tính (.json)"
+            >
+              <Download size={11} />
+              Xuất kịch bản (.json)
+            </button>
+
+            {/* Import Backup Button */}
+            <label
+              className="px-2.5 py-1.5 rounded-lg border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-slate-50 hover:border-zinc-400 transition-colors text-[10px] uppercase font-bold flex items-center gap-1 cursor-pointer"
+              title="Chọn tệp kịch bản (.json) từ máy tính để khôi phục bài giảng"
+            >
+              <Upload size={11} />
+              Nhập kịch bản
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportBackup}
+                className="hidden"
+              />
+            </label>
+
             <button
               onClick={handleResetToPresets}
               className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors text-[10px] uppercase font-bold flex items-center gap-1 cursor-pointer"
@@ -397,7 +598,7 @@ export default function App() {
               <RotateCcw size={11} />
               Reset mẫu kịch bản
             </button>
-            <span className="text-[10px] bg-zinc-100 text-zinc-900 border border-zinc-200 font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
+            <span className="text-[10px] bg-zinc-150 text-zinc-800 border border-zinc-200 font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-zinc-800 rounded-full animate-ping"></span>
               Đã Lưu Local
             </span>
@@ -521,14 +722,12 @@ export default function App() {
           )}
         </div>
 
-        {/* Right Side Column: Gemini integrated AI Workspace */}
-        <div className="w-full lg:w-[380px] shrink-0 bg-slate-50">
-          <GeminiPanel
-            currentSections={sections}
-            onImportAISections={handleImportAISections}
-            customTemplate={customTemplate}
-            customDocLink={customDocLink}
-            customApiKey={customApiKey}
+        {/* Right Side Column: Cinematic Production Content Calendar */}
+        <div className="w-full lg:w-[380px] shrink-0 bg-zinc-900 border-l border-zinc-850">
+          <ProductionCalendar
+            sections={sections}
+            calendarPlan={calendarPlan}
+            onUpdatePlan={handleUpdatePlan}
           />
         </div>
       </div>

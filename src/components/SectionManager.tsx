@@ -65,7 +65,7 @@ export default function SectionManager({
   };
 
   return (
-    <div className="bg-white border-b border-slate-200 p-5 shadow-xs">
+    <div className="bg-zinc-100/50 border-b border-zinc-200 p-5 shadow-xs">
       <div className="max-w-7xl mx-auto">
         {/* Header section with title and Add quick button */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">

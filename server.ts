@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -79,6 +80,50 @@ async function startServer() {
     res.json({
       hasApiKey: !!customApiKey || !!process.env.GEMINI_API_KEY
     });
+  });
+
+  const SYLLABUS_FILE = path.join(process.cwd(), "src", "syllabus_store.json");
+
+  // API: Load syllabus from server workspace (highly persistent database)
+  app.get("/api/load-syllabus", (req, res) => {
+    try {
+      if (fs.existsSync(SYLLABUS_FILE)) {
+        const fileContent = fs.readFileSync(SYLLABUS_FILE, "utf-8");
+        const parsed = JSON.parse(fileContent);
+        res.json({ success: true, ...parsed });
+      } else {
+        res.json({ success: false, message: "No server-side database found yet" });
+      }
+    } catch (error: any) {
+      console.error("Error loading server-side syllabus:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // API: Save syllabus to server workspace (database sync)
+  app.post("/api/save-syllabus", (req, res) => {
+    try {
+      const { topic, sections, customTemplate, customDocLink, calendarPlan } = req.body;
+      const dataToSave = {
+        topic,
+        sections,
+        customTemplate,
+        customDocLink,
+        calendarPlan,
+        updatedAt: new Date().toISOString()
+      };
+      
+      const dir = path.dirname(SYLLABUS_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      fs.writeFileSync(SYLLABUS_FILE, JSON.stringify(dataToSave, null, 2), "utf-8");
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error saving server-side syllabus:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
   });
 
   // 2. API: Auto-suggest whole course structure for a topic in Visual Storytelling & Pacing
